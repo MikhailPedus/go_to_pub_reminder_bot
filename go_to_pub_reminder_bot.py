@@ -116,17 +116,39 @@ def fetch_events():
             dt = component.get("DTSTART").dt
             if isinstance(dt, datetime.datetime):  # нормализуем к дате
                 dt = dt.date()
+            
+            summary = str(component.get("SUMMARY"))
+
+            # пропускаем "мостики" и "замены"
+            if "bridge day" in summary.lower() or "in lieu" in summary.lower():
+                continue
+            
             if dt >= today:
                 events.append({
                     "date": dt,
-                    "summary": str(component.get("SUMMARY")),
+                    "summary": summary,
                     "location": str(component.get("LOCATION")),
                     "url": str(component.get("URL")),
                 })
+    
+    # сгруппируем по дате
+    grouped = defaultdict(list)
+    for ev in events:
+        grouped[ev["date"]].append(ev)
 
-    # сортировка по дате
-    events = sorted(events, key=lambda x: x["date"])
-    return events
+    collapsed = []
+    for date, evs in grouped.items():
+        if len(evs) == 1:
+            collapsed.append(evs[0])
+        else:
+            collapsed.append({
+                "date": date,
+                "summary": "/".join(e["summary"] for e in evs),
+                "location": "/".join(e["location"] for e in evs if e["location"]),
+                "url": "/".join(e["url"] for e in evs if e["url"]),
+            })
+    # сортировка по дате            
+    return sorted(collapsed, key=lambda x: x["date"])
 
 def send_reminder(context: ContextTypes.DEFAULT_TYPE):
     events = fetch_events()
