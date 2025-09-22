@@ -11,7 +11,9 @@ import logging
 import time
 import os
 
-from telegram.ext import Application, CommandHandler, ContextTypes, JobQueue
+from collections import defaultdict
+
+from telegram.ext import Application, MessageHandler, CommandHandler, ChatMemberHandler, ContextTypes, JobQueue, filters
 from telegram import Update
 
 from icalendar import Calendar
@@ -21,6 +23,7 @@ from openai import OpenAI
 TOKEN = os.getenv("BOT_TOKEN")
 OPENAI_API_KEY=os.getenv("OPENAI_API_KEY")
 
+CHAT_IDS_FILE = "chat_ids.txt"
 CHAT_IDS = []
 ICAL_URLS = [
              "https://www.officeholidays.com/ics/ireland",
@@ -31,10 +34,25 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 
 logging.basicConfig(level=logging.INFO)
 
+def load_chat_ids():
+    """Загружает CHAT_ID из файла в список CHAT_IDS."""
+    global CHAT_IDS
+    if os.path.exists(CHAT_IDS_FILE):
+        with open(CHAT_IDS_FILE, "r", encoding="utf-8") as f:
+            CHAT_IDS = [line.strip() for line in f if line.strip().isdigit()]
+    else:
+        CHAT_IDS = []
+
+def save_chat_id(chat_id: str):
+    """Добавляет новый CHAT_ID в файл."""
+    with open(CHAT_IDS_FILE, "a", encoding="utf-8") as f:
+        f.write(f"{chat_id}\n")
+
 def register_chat_id(update):
     chat_id = update.message.chat.id
     if chat_id not in CHAT_IDS:
         CHAT_IDS.append(chat_id)
+        save_chat_id(chat_id)
         print(f"Новый CHAT_ID зарегистрирован: {chat_id}")
 
 def generate_poem(event: dict) -> str:
@@ -226,12 +244,45 @@ async def go_to_pub(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Ближайших праздников в течение недели нет, но не унываем!\n\n{poem}\n🍺"
         )
 
+async def greet_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    today = datetime.date.today()
+    for user in update.message.new_chat_members:
+        event = {
+            "date": today,
+            "summary": f"{user.first_name} присоединился к чату",
+            "location": update.effective_chat.title or "наш Телеграм чат",
+            "url": ""
+        }
+        poem = safe_generate_poem(event)
+        await update.effective_chat.send_message(
+            f"🎉 Добро пожаловать, {user.first_name}!\n\n{poem}\n🍺"
+        )
+        
+
+async def bye_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    today = datetime.date.today()
+    user = update.message.left_chat_member
+    event = {
+            "date": today,
+            "summary": f"{user.first_name} покинул чат",
+            "location": update.effective_chat.title or "наш Телеграм чат",
+            "url": ""
+        }
+    poem = safe_generate_poem(event)
+    await update.effective_chat.send_message(
+        f"{user.first_name} ушёл...\n\n{poem}\n🍺"
+    )
 def main():
+    load_chat_ids()
+
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("next_event", next_event))
     app.add_handler(CommandHandler("go_to_pub", go_to_pub))
+    
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, greet_new_member))
+    app.add_handler(MessageHandler(filters.StatusUpdate.LEFT_CHAT_MEMBER, bye_member))
     
     async def schedule_jobs(app):
         app.job_queue.run_daily(send_reminder, time=dt_time(hour=10, minute=0))
