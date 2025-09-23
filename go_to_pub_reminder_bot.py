@@ -185,10 +185,12 @@ async def start(update, context):
     
     await update.message.reply_text(
         "Привет! Я барный бот 🍺\n"
-        "Я могу напомнить о праздниках и сочинить четверостишье 🎉\n"
-        "Чтобы узнать ближайшее событие, используй команду /next_event — и я подскажу, по какому поводу идем в паб!\n"
-        "Если хочешь просто собрать друзей и сходить в паб без повода, воспользуйся командой /go_to_pub\n"
-        "Если хочешь посмотреть весь список событий /list_events"
+        "Я могу напомнить о праздниках и сочинить четверостишье 🎉\n\n"
+        "📌 Команды:\n"
+        "• /next_event — ближайшее событие и стих о нём\n"
+        "• /go_to_pub — пригласить в паб без повода\n"
+        "• /go_to_pub <повод> — пригласить в паб с любым поводом (например: /go_to_pub сдал на права)\n"
+        "• /list_events — список ближайших праздников\n"
     )
 
 async def next_event(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -219,10 +221,26 @@ async def go_to_pub(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     register_chat_id(update)
     
-    events = fetch_events()
-    today = datetime.date.today()
-    week_later = today + datetime.timedelta(days=7)
+    # Проверяем на дополнительный контент
+    extra_context = " ".join(context.args) if context.args else ""
 
+    today = datetime.date.today()
+    if extra_context:
+        # если пользователь что-то написал после команды — используем это как событие
+        event = {
+            "date": today,
+            "summary": extra_context,
+            "location": update.effective_chat.title or "наш чат",
+            "url": ""
+        }
+        poem = safe_generate_poem(event)
+        await update.message.reply_text(
+            f"Повод собраться: {extra_context}\n\n{poem}\n🍺"
+        )
+        return
+
+    events = fetch_events()
+    
     if not events:
         # Событий нет вообще
         poem = safe_generate_poem(None)
@@ -232,6 +250,7 @@ async def go_to_pub(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # События уже отсортированы по дате, берём первое
+    week_later = today + datetime.timedelta(days=7)
     next_event = events[0] if today <= events[0]["date"] <= week_later else None
 
     if next_event:
