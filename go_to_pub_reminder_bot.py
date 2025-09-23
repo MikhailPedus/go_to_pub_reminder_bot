@@ -186,8 +186,9 @@ async def start(update, context):
     await update.message.reply_text(
         "Привет! Я барный бот 🍺\n"
         "Я могу напомнить о праздниках и сочинить четверостишье 🎉\n"
-        "Чтобы узнать ближайшее событие, используй команду /next_event — и я подскажу, по какому поводу идем в паб!"
-        "Если хочешь просто собрать друзей и сходить в паб без повода, воспользуйся командой /go_to_pub"
+        "Чтобы узнать ближайшее событие, используй команду /next_event — и я подскажу, по какому поводу идем в паб!\n"
+        "Если хочешь просто собрать друзей и сходить в паб без повода, воспользуйся командой /go_to_pub\n"
+        "Если хочешь посмотреть весь список событий /list_events"
     )
 
 async def next_event(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -272,6 +273,23 @@ async def bye_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_chat.send_message(
         f"{user.first_name} ушёл...\n\n{poem}\n🍺"
     )
+
+async def list_events(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    register_chat_id(update)
+
+    events = fetch_events()
+    if not events:
+        await update.message.reply_text("Ближайших событий не найдено 🍺")
+        return
+
+    # ограничим, например, 10 ближайшими
+    lines = []
+    for ev in events[:10]:
+        lines.append(f"📅 {ev['date']}: {ev['summary']} ({ev['location']})")
+
+    text = "Ближайшие события:\n\n" + "\n".join(lines)
+    await update.message.reply_text(text)
+
 def main():
     load_chat_ids()
 
@@ -280,7 +298,8 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("next_event", next_event))
     app.add_handler(CommandHandler("go_to_pub", go_to_pub))
-    
+    app.add_handler(CommandHandler("list_events", list_events))
+
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, greet_new_member))
     app.add_handler(MessageHandler(filters.StatusUpdate.LEFT_CHAT_MEMBER, bye_member))
     
